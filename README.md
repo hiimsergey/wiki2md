@@ -8,7 +8,7 @@ cd wiki2md
 make
 ```
 
-## Example use
+## Example usage
 ```sh
 $ ./wiki2md foo.wiki bar.wiki
 Created foo.md

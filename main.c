@@ -17,6 +17,33 @@
 #include <string.h>
 
 int retval = 0;
+void (*state)(char *c, FILE *target);
+
+void state_newline(char *c, FILE *target);
+void state_heading_1_candidate(char *c, FILE *target);
+void state_heading_2_candidate(char *c, FILE *target);
+
+void state_newline(char *c, FILE *target) {
+    switch (*c) {
+        case '=':
+            state = &state_heading_1_candidate;
+            // TODO NOW save the char somewhere
+            // probably not target, since this is where we write the trnaslation
+            break;
+    }
+}
+
+void state_heading_1_candidate(char *c, FILE *target) {
+    switch (*c) {
+        case '=':
+            state = &state_heading_2_candidate;
+            break;
+    }
+}
+
+void state_heading_2_candidate(char *c, FILE *target) {
+    // TODO NOW
+}
 
 void translate_file(char *path) {
     FILE *file = fopen(path, "r");
@@ -44,13 +71,9 @@ void translate_file(char *path) {
     }
     printf("Created %s\n", target_path);
 
+    state = &state_newline;
     char c;
-    while ((c = fgetc(file)) != EOF) {
-        // TODO END batch these syscalls
-        putchar(c);
-
-        // TODO NOW
-    }
+    while ((c = fgetc(file)) != EOF) state(&c, target);
 
     fclose(file);
 }
