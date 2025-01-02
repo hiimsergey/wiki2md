@@ -8,9 +8,9 @@ cd wiki2md
 make
 ```
 
-## Use
+## Example use
 ```sh
-./wiki2md foo.wiki bar.wiki
+$ ./wiki2md foo.wiki bar.wiki
 Created foo.md
 Created bar.md
 ```
