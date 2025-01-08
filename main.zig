@@ -1,9 +1,5 @@
 const std = @import("std");
-
-const FileInfo = struct {
-    name: []const u8,
-    dir: std.fs.Dir
-};
+const File = std.fs.File;
 
 pub fn main() u8 {
     const stderr = std.io.getStdErr().writer();
@@ -30,52 +26,54 @@ pub fn main() u8 {
     return stat;
 }
 
-fn handle_arg(filename: []const u8, stderr: anytype, stat: *u8) void {
-    if (!std.mem.endsWith(u8, filename, ".wiki")) {
-        stderr.print("error: {s}: not a vimwiki file\n", .{filename}) catch {};
+fn handle_arg(path: []const u8, stderr: anytype, stat: *u8) void {
+    if (!std.mem.endsWith(u8, path, ".wiki")) {
+        stderr.print("error: {s}: not a vimwiki file\n", .{path}) catch {};
         stat.* = 1;
         return;
     }
 
-    var file: FileInfo = undefined;
-
+    const cwd = std.fs.cwd();
     // TODO FINAL port to windows
-    file.dir = if (std.mem.startsWith(u8, filename, "/"))
-        std.fs.openDirAbsolute(filename[0..filename.len - ], .{});
-    else std.fs.cwd().openDir(filename, .{})
-    catch {
-        stderr.print("error: {s}: no such file\n", .{filename}) catch {};
-        stat.* = 1;
-        return;
-    };
-    
-    translate_file(&file, )
+    const absolute: bool = std.mem.startsWith(u8, path, "/");
 
-    if (std.mem.startsWith(u8, filename, "/")) {
-        const file = std.fs.openFileAbsolute(filename, .{}) catch {
-            stderr.print("error: {s}: no such file\n", .{filename}) catch {};
+    const src = blk: {
+        const result = if (absolute) std.fs.openFileAbsolute(path, .{})
+        else cwd.openFile(path, .{});
+
+        break :blk result catch {
+            stderr.print("error: {s}: no such file\n", .{path}) catch {};
             stat.* = 1;
             return;
         };
-        translate_file(&file, filename, stat);
-    } else {
-        const file = std.fs.cwd().openFile(filename, .{}) catch {
-            stderr.print("error: {s}: no such file\n", .{filename}) catch {};
+    };
+
+    const dst = blk: {
+        const path_extless = path[0..path.len - 4];
+        // TODO ERRHANDLE what if path is longer than 255
+        var dst_path: [std.os.linux.NAME_MAX]u8 = undefined;
+        _ = std.fmt.bufPrint(&dst_path, "{s}md", .{path_extless}) catch {
+            stderr.print("error: could not compile destination path name", .{}) catch {};
             stat.* = 1;
             return;
         };
-        translate_file(&file, filename, stat);
-    }
+
+        const result = if (absolute) std.fs.createFileAbsolute(&dst_path, .{})
+        else cwd.createFile(&dst_path, .{});
+
+        break :blk result catch {
+            stderr.print("error: {s}: could not create file\n", .{dst_path}) catch {};
+            stat.* = 1;
+            return;
+        };
+    };
+
+    translate_file(&src, &dst, stderr, stat);
 }
 
-fn translate_file(file: *const std.fs.File, name: []const u8, stat: *u8) void {
-    const filename_extless = name[0..name.len - 5];
-
-    try 
-
-    std.debug.print("this is the extless name: {s}\n", .{filename_extless});
-    _ = file.stat() catch return;
+fn translate_file(src: *const File, dst: *const File, stderr: anytype, stat: *u8) void {
+    _ = src;
+    _ = dst;
+    stderr.print("finally translating a file\n", .{}) catch {};
     stat.* = 1;
-    // TODO PLAN
-    // try creating <file without extension>.md
 }
