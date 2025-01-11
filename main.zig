@@ -1,6 +1,5 @@
-// TODO FINAL PORT windows
 const std = @import("std");
-const builtin = @import("builtin");
+
 const Dir = std.fs.Dir;
 const File = std.fs.File;
 
@@ -9,147 +8,130 @@ const RED: []const u8 = "\x1b[31m";
 const GREEN: []const u8 = "\x1b[32m";
 const CYAN: []const u8 = "\x1b[36m";
 
-/// TODO COMMENT
-fn mkdir(dir: []const u8, is_absolute: bool) Dir.OpenError!void {
-    const new_dir = if (is_absolute) std.fs.makeDirAbsolute(dir)
-    else std.fs.cwd().makeDir(dir);
 
-    _ = new_dir catch {
-        stderr.print("{s}error{s}: {s} could not create\n", .{RED, NORMAL, dir})
-        catch {};
-        return File.OpenError.FileNotFound;
+/// TODO COMMENT
+fn mkdir(dir: *Dir, dir_basename: []const u8, stderr: anytype) Dir.MakeError!void {
+    dir.makeDir(dir_basename) catch |err| {
+        const errmsg = switch (err) {
+            Dir.MakeError.AccessDenied => "access denied",
+            Dir.MakeError.NoSpaceLeft => "no space left in memory",
+            else => "could not make directory"
+        };
+        stderr.print("{s}error{s}: {s}: {s}\n", .{RED, NORMAL, dir_basename, errmsg}) catch {};
+        return err;
     };
-    stderr.print("{s}info{s}: {s}: created output directory\n",
-                 .{GREEN, NORMAL, dir}) catch {};
+    stderr.print("{s}info{s}: {s}: made directory\n", .{GREEN, NORMAL, dir_basename}) catch {};
 }
 
-/// Return a handle to the given directory path. If the directory doesn't exist,
-/// try to create it.
-/// Alternatively return a directory open error.
-fn get_output_dir(dir: []const u8, stderr: anytype) Dir.OpenError!Dir {
-    const is_absolute = std.fs.path.isAbsolute(dir);
+/// TODO COMMENT
+fn get_output_dir(dir_path: []const u8, stderr: anytype) (Dir.MakeError || Dir.OpenError)!Dir {
+    var cwd = std.fs.cwd();
+    defer cwd.close();
 
-    const result = if (is_absolute) std.fs.openDirAbsolute(dir, .{})
-    else std.fs.cwd().openDir(dir, .{});
-
-    return result catch |err| {
+    return cwd.openDir(dir_path, .{}) catch |err| {
         if (err == Dir.OpenError.FileNotFound) {
-            try mkdir(dir, is_absolute);
-            return get_output_dir(dir, stderr);
+            try mkdir(&cwd, dir_path, stderr);
+            return get_output_dir(dir_path, stderr);
         }
 
         const errmsg = switch (err) {
             Dir.OpenError.NotDir => "not a directory",
             Dir.OpenError.FileNotFound => "no such directory",
-            Dir.OpenError.AccessDenied => "access denied",
             else => "could not open directory"
         };
-        stderr.print("{s}error{s}: {s}: {s}\n", .{RED, NORMAL, dir, errmsg}) catch {};
-        return err;
-    };
-}
-
-/// Return a handle to the given input file.
-/// Alternatively return a file open error.
-fn get_input_file(file_path: []const u8, is_absolute: bool, stderr: anytype) File.OpenError!File {
-    const result = if (is_absolute) std.fs.openFileAbsolute(file_path, .{})
-    else std.fs.cwd().openFile(file_path, .{});
-
-    return result catch |err| {
-        const errmsg = switch (err) {
-            File.OpenError.AccessDenied => "access denied",
-            File.OpenError.FileNotFound => "no such file",
-            else => "could not open file"
-        };
-        stderr.print("{s}error{s}: {s}: {s}\n", .{RED, NORMAL, result, errmsg}) catch {};
-        return err;
-    };
-}
-
-/// Return a handle to the given input directory.
-/// Alternatively return a directory open error.
-fn get_input_dir(dir_path: []const u8, is_absolute: bool, out_dir: *Dir, stderr: anytype) Dir.OpenError!Dir {
-    const result = if (is_absolute) {
-        // TODO NOW i dont think basename is appropriate here
-        const basename = std.fs.path.basename(dir_path);
-        out_dir.openDir(basename, .{ .iterate = true }) catch |err| {
-            if (err == Dir.OpenError.FileNotFound) {
-                try mkdir() // TODO NOW NOTE PLAN
-                // so i will inevitably land here because the main out dir doesnt have
-                // all the subdirs of the arguments
-                // if mkdir() will have only one call, then i wont keep it as a func
-                // now ill research on how to make dir chains
-            }
-        };
-    } else dir_path.openDir(dir_path, .{ .iterate = true });
-
-    return result catch |err| {
-        const errmsg = switch (err) {
-            Dir.OpenError.AccessDenied => "access denied",
-            Dir.OpenError.FileNotFound => "no such directory",
-            else => "could not open directory"
-        };
-        stderr.print("{s}error{s}: {s}: {s}\n", .{RED, NORMAL, result, errmsg}) catch {};
+        stderr.print("{s}error{s}: {s}: {s}\n", .{RED, NORMAL, dir_path, errmsg}) catch {};
         return err;
     };
 }
 
 /// TODO COMMENT
-fn get_output_file(arg: []const u8, out_dir: *Dir, stderr: anytype) File {
-    // TODO
-    _ = arg;
-    _ = out_dir;
-    _ = stderr;
-
+fn get_output_file(file_basename: []const u8, out_dir: *Dir, stderr: anytype) File.OpenError!File {
+    const result = out_dir.createFile(file_basename, .{}) catch |err| {
+        const errmsg = switch (err) {
+            File.OpenError.NoSpaceLeft => "no space left in memory",
+            File.OpenError.PathAlreadyExists => "already exists",
+            else => "could not create file"
+        };
+        stderr.print("{s}error{s}: {s}: {s}\n", .{RED, NORMAL, file_basename, errmsg}) catch {};
+        return err;
+    };
+    stderr.print("{s}info{s}: {s}: created file\n", .{GREEN, NORMAL, file_basename}) catch {};
+    return result;
 }
 
+// TODO CONSIDER not using a separate function for that
 /// TODO COMMENT
+fn get_input_file(file_path: []const u8, stderr: anytype) File.OpenError!File {
+    return std.fs.cwd().openFile(file_path, .{}) catch |err| {
+        stderr.print("{s}error{s}: {s}: could not open", .{RED, NORMAL, file_path}) catch {};
+        return err;
+    };
+}
+
+/// TODO COMMMENT
 fn transpile_file(file: *File, out_file: *File, stderr: anytype) !void {
-    // TODO
+    stderr.print("very well\n", .{}) catch {};
     _ = file;
     _ = out_file;
-    _ = stderr;
 }
 
+// TODO CONSIDER passings is_absolute here because when recursing to this func for all children
+// of a dir, you can check for is_absolute for one file, since all of them are the same.
 /// TODO COMMENT
-fn transpilation_proc(path: []const u8, out_dir: *Dir, stderr: anytype) !void {
-    stderr.print("TODO INFO transpiling {s}\n", .{path}) catch {};
+fn read_arg(path: []const u8, out_dir: *Dir, stderr: anytype)
+(File.StatError || File.OpenError || Dir.MakeError)!void {
+    const path_stat: File.Stat = std.fs.cwd().statFile(path) catch |err| {
+        const errmsg = switch (err) {
+            File.StatError.AccessDenied => "access denied",
+            else => "could not open"
+        };
+        stderr.print("{s}error{s}: {s}: {s}\n", .{RED, NORMAL, path, errmsg}) catch {};
+        return err;
+    };
 
-    const is_absolute = std.fs.path.isAbsolute(path);
-    const file_stat = std.fs.cwd().stat(path);
+    if (path_stat.kind == File.Kind.file) {
+        var file: File = try get_input_file(path, stderr);
+        defer file.close();
 
-    if (file_stat.kind == .File) {
-        const file = get_input_file(path, is_absolute, out_dir, stderr);
-        const out_file = get_output_file(path, is_absolute, out_dir, stderr);
-        transpile_file(&file, &out_file, stderr);
+        const basename = std.fs.path.basename(path);
+        var out_file: File = try get_output_file(basename, out_dir, stderr);
+        defer out_file.close();
+
+        try transpile_file(&file, &out_file, stderr);
     } else {
-        const dir = get_input_dir(path, is_absolute, out_dir, stderr);
-        var dir_iter: Dir.Iterator = dir.iterate();
-        while (dir_iter.next() catch null) |entry|
-            try transpilation_proc(entry.name, dir, stderr);
-        defer dir_iter.close();
+        const basename = std.fs.path.basename(path);
+        // TODO CONSIDER moving to two functions
+        try mkdir(out_dir, basename, stderr);
+
+        var out_subdir: Dir = out_dir.openDir(path, .{ .iterate = true }) catch |err| {
+            stderr.print(
+                "{s}error{s}: {s}: could not open directory, despite just making it :/\n",
+                .{RED, NORMAL, path}
+            ) catch {};
+            return err;
+        };
+        defer out_subdir.close();
+
+        var subdir_it: Dir.Iterator = out_subdir.iterate();
+        while (try subdir_it.next()) |entry| try read_arg(entry.name, &out_subdir, stderr);
     }
 }
 
 pub fn main() u8 {
-    var stat: u8 = 0;
-    var stderr = std.io.getStdErr().writer();
+    const stderr = std.io.getStdErr().writer();
 
     // Command arguments
     var args = std.process.args();
     defer args.deinit();
     _ = args.skip(); // skip "wiki2md"
-    
-    // Output directory (first command argument)
-    var out_dir = if (args.next()) |arg| blk: {
-        const result = get_output_dir(arg, stderr);
-        break :blk result catch { return 1; };
-    } else {
-        // Help message (no arguments)
+
+    // Output directory (first argument)
+    var out_dir: Dir = if (args.next()) |arg| get_output_dir(arg, stderr) catch { return 1; }
+    else {
         stderr.print(
             \\wiki2md – transpile your Vimwiki files to Markdown
             \\
-            \\{s}Usage{s}: {s}wiki2md <destination directory> [(<input file>|<input directory>) ...]{s}
+            \\{s}Usage{s}: {s}wiki2md <output directory> [(<input file>|<input directory>) ...]{s}
             \\
             , .{GREEN, NORMAL, CYAN, NORMAL}
         ) catch {};
@@ -157,16 +139,15 @@ pub fn main() u8 {
     };
     defer out_dir.close();
 
-    // Any input files (first argument)
-    if (args.next()) |arg| transpilation_proc(arg, &out_dir, stderr) catch { stat = 1; }
+    // Any input paths (second argument)
+    if (args.next()) |arg| read_arg(arg, &out_dir, stderr) catch { return 1; }
     else {
         stderr.print("{s}error{s}: no input files\n", .{RED, NORMAL}) catch {};
         return 1;
     }
 
-    // Rest of input files
-    while (args.next()) |arg|
-        transpilation_proc(arg, &out_dir, stderr) catch { stat = 1; };
-
+    // Rest of arguments
+    var stat: u8 = 0;
+    while (args.next()) |arg| read_arg(arg, &out_dir, stderr) catch { stat = 1; };
     return stat;
 }
