@@ -11,8 +11,7 @@ pub fn build(b: *Build) void {
         .name = "wiki2md",
         .root_source_file = b.path("main.zig"),
         .target = target,
-        .optimize = optimize,
-        .strip = true
+        .optimize = optimize
     });
 
     // Installation
