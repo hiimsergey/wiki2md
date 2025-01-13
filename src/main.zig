@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const transpilation = @import("src/transpilation.zig");
 
 const Dir = std.fs.Dir;
 const File = std.fs.File;
@@ -11,7 +12,7 @@ const CYAN: []const u8 = "\x1b[36m";
 
 const NAME_MAX = switch(builtin.os.tag) {
     .windows => std.os.windows.NAME_MAX,
-    else => std.os.linux.NAME_MAX
+    else => std.os.linux.NAME_MAX // what could go wrong?
 };
 
 
@@ -77,14 +78,6 @@ fn get_input_file(file_path: []const u8, cwd: *Dir, stderr: anytype) File.OpenEr
     };
 }
 
-/// TODO COMMMENT
-fn transpile_file(file: *File, out_file: *File, stderr: anytype) !void {
-    // TODO NOW
-    _ = stderr;
-    _ = file;
-    _ = out_file;
-}
-
 const ReadArgError = Dir.StatFileError || File.OpenError || Dir.MakeError;
 
 /// TODO COMMENT
@@ -120,10 +113,9 @@ fn read_arg(path: []const u8, cwd: *Dir, out_dir: *Dir, stderr: anytype) ReadArg
         var out_file: File = try get_output_file(basename, out_dir, stderr);
         defer out_file.close();
 
-        try transpile_file(&file, &out_file, stderr);
+        try transpilation.transpile_file(&file, &out_file, stderr);
     } else {
         const basename = std.fs.path.basename(path);
-        // TODO CONSIDER moving to two functions
         try mkdir(out_dir, basename, stderr);
 
         var out_subdir: Dir = out_dir.openDir(basename, .{}) catch |err| {
@@ -144,8 +136,8 @@ fn read_arg(path: []const u8, cwd: *Dir, out_dir: *Dir, stderr: anytype) ReadArg
             return err;
         };
         defer dir.close();
-        var dir_it: Dir.Iterator = dir.iterate();
 
+        var dir_it: Dir.Iterator = dir.iterate();
         var result: ?ReadArgError = null;
         while (try dir_it.next()) |entry| read_arg(entry.name, &dir, &out_subdir, stderr)
         catch |err| { result = err; };

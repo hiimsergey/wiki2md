@@ -9,7 +9,7 @@ pub fn build(b: *Build) void {
     // Main executable
     const exe = b.addExecutable(.{
         .name = "wiki2md",
-        .root_source_file = b.path("main.zig"),
+        .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize
     });
